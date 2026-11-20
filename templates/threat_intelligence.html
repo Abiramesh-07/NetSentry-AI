@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Threat Intelligence{% endblock %}
+{% block page_title %}Threat Intelligence & IP Reputation{% endblock %}
+{% block page_subtitle %}Destination Risk Enrichment & C2 Indicator Feeds{% endblock %}
+
+{% block content %}
+<!-- IP REPUTATION LOOKUP TOOL -->
+<div class="card mb-4">
+  <div class="card-header bg-white">
+    <h3 class="card-title text-primary"><i class="bi bi-search text-primary"></i> On-Demand IP Threat Intelligence Lookup</h3>
+    <span class="badge bg-light text-secondary border">Live / Cache Hybrid</span>
+  </div>
+  <div class="card-body">
+    <form id="ipLookupForm" class="row g-2 align-items-center mb-3">
+      <div class="col-md-8">
+        <div class="input-group">
+          <span class="input-group-text bg-light text-muted font-monospace"><i class="bi bi-globe"></i></span>
+          <input type="text" id="lookupIpInput" class="form-control font-monospace" placeholder="Enter IP address (e.g. 198.51.100.77, 203.0.113.88, 8.8.8.8)" required value="198.51.100.77">
+        </div>
+      </div>
+      <div class="col-md-4">
+        <button type="submit" class="btn btn-ns-primary w-100">
+          <i class="bi bi-shield-check me-1"></i> Query Threat Intel Feed
+        </button>
+      </div>
+    </form>
+
+    <!-- Lookup Result Panel -->
+    <div id="lookupResultPanel" class="p-3 border rounded bg-light-subtle" style="display: none;">
+      <div class="row align-items-center">
+        <div class="col-md-3 text-center border-end">
+          <div class="text-muted small">Reputation Score</div>
+          <div class="display-6 fw-bold text-danger mb-0" id="resRepScore">92</div>
+          <span class="badge bg-danger-subtle text-danger border" id="resRepCategory">C2 / Data Drop</span>
+        </div>
+        <div class="col-md-9 ps-md-4">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h5 class="fw-bold font-monospace text-dark mb-0" id="resIp">198.51.100.77</h5>
+            <span class="badge bg-light text-muted border" id="resSource">Local Threat Database</span>
+          </div>
+          <div class="row g-2 small mb-2">
+            <div class="col-sm-4"><strong>Country:</strong> <span id="resCountry" class="font-monospace">RO</span></div>
+            <div class="col-sm-8"><strong>ISP / Organization:</strong> <span id="resIsp">Offshore Bulletproof Hosting Ltd</span></div>
+          </div>
+          <div>
+            <strong class="small text-secondary">Threat Tags:</strong>
+            <span id="resTagsContainer"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KNOWN HIGH-RISK DESTINATIONS & FEED TABLE -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h3 class="card-title"><i class="bi bi-shield-slash text-danger"></i> Cached Destination Threat Indicators</h3>
+    <span class="text-muted small">{{ intel_records|length }} tracked endpoints</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Destination IP</th>
+          <th>Reputation Score</th>
+          <th>Risk Category</th>
+          <th>Country</th>
+          <th>ISP / Autonomous System</th>
+          <th>Classification</th>
+          <th>Threat Tags</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if intel_records %}
+          {% for r in intel_records %}
+            <tr>
+              <td><span class="ip-badge font-monospace fw-bold">{{ r.ip_address }}</span></td>
+              <td>
+                <span class="risk-pill {% if r.reputation_score >= 70 %}critical{% elif r.reputation_score >= 40 %}medium{% else %}low{% endif %}">
+                  {{ r.reputation_score }}/100
+                </span>
+              </td>
+              <td class="fw-semibold {% if r.is_known_malicious %}text-danger{% else %}text-success{% endif %}">
+                {{ r.category }}
+              </td>
+              <td><span class="badge bg-light text-dark border">{{ r.country }}</span></td>
+              <td class="small text-muted">{{ r.isp }}</td>
+              <td>
+                {% if r.is_known_malicious %}
+                  <span class="badge-severity critical"><i class="bi bi-exclamation-octagon-fill"></i> Malicious</span>
+                {% else %}
+                  <span class="badge-severity low"><i class="bi bi-check-circle-fill"></i> Clean / Trusted</span>
+                {% endif %}
+              </td>
+              <td>
+                {% set tags = r.tags_json | default('[]') %}
+                <span class="small text-muted">{{ tags.replace('"', '').replace('[', '').replace(']', '') }}</span>
+              </td>
+              <td>
+                <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.72rem;" onclick="quickLookup('{{ r.ip_address }}')">
+                  Re-query
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="8" class="text-center py-4 text-muted">No threat intelligence records cached yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function performLookup(ip) {
+    try {
+      const resp = await fetch(`{{ url_for('api_threat_intel_lookup') }}?ip=${encodeURIComponent(ip)}`);
+      const data = await resp.json();
+      if (!data || data.error) {
+        showToast(data.error || 'Lookup error', 'text-bg-danger');
+        return;
+      }
+
+      document.getElementById('lookupResultPanel').style.display = 'block';
+      document.getElementById('resIp').innerText = data.ip_address;
+      document.getElementById('resRepScore').innerText = data.reputation_score;
+      document.getElementById('resRepCategory').innerText = data.category;
+      document.getElementById('resSource').innerText = data.source || 'Threat Feed';
+      document.getElementById('resCountry').innerText = data.country || 'N/A';
+      document.getElementById('resIsp').innerText = data.isp || 'N/A';
+
+      const tagsContainer = document.getElementById('resTagsContainer');
+      tagsContainer.innerHTML = (data.tags || []).map(t => `<span class="badge bg-secondary-subtle text-secondary border me-1">${t}</span>`).join('');
+
+      showToast(`Intelligence report retrieved for ${ip}`);
+    } catch (e) {
+      console.error(e);
+      showToast('Network error during lookup.', 'text-bg-danger');
+    }
+  }
+
+  function quickLookup(ip) {
+    document.getElementById('lookupIpInput').value = ip;
+    performLookup(ip);
+  }
+
+  document.getElementById('ipLookupForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const ip = document.getElementById('lookupIpInput').value.trim();
+    if (ip) performLookup(ip);
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+
+{% block title %}Incident Investigation{% endblock %}
+{% block page_title %}Incident Investigation & SOC Triage{% endblock %}
+{% block page_subtitle %}Forensic Case Dossiers, Anomaly Timelines, and Analyst Feedback Loop{% endblock %}
+
+{% block content %}
+<!-- FILTER BAR -->
+<div class="card mb-4">
+  <div class="card-body p-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div class="d-flex align-items-center gap-2">
+        <span class="small fw-semibold text-secondary">Filter by Status:</span>
+        <a href="{{ url_for('incidents') }}" class="btn btn-sm {% if not current_filter %}btn-primary{% else %}btn-outline-secondary{% endif %}">All</a>
+        <a href="{{ url_for('incidents') }}?status=New" class="btn btn-sm {% if current_filter == 'New' %}btn-primary{% else %}btn-outline-secondary{% endif %}">New</a>
+        <a href="{{ url_for('incidents') }}?status=Under Investigation" class="btn btn-sm {% if current_filter == 'Under Investigation' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Under Investigation</a>
+        <a href="{{ url_for('incidents') }}?status=Confirmed Suspicious" class="btn btn-sm {% if current_filter == 'Confirmed Suspicious' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Confirmed</a>
+        <a href="{{ url_for('incidents') }}?status=False Positive" class="btn btn-sm {% if current_filter == 'False Positive' %}btn-primary{% else %}btn-outline-secondary{% endif %}">False Positive</a>
+      </div>
+
+      <div class="small text-muted">
+        Total Incidents: <strong>{{ alerts|length }}</strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- INCIDENTS TABLE -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title"><i class="bi bi-shield-exclamation text-danger"></i> Flagged Security Alerts & Exfiltration Incidents</h3>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Case #</th>
+          <th>Time Detected</th>
+          <th>Origin Host</th>
+          <th>Destination IP</th>
+          <th>Alert Classification</th>
+          <th>Risk Score</th>
+          <th>Severity</th>
+          <th>Triage Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if alerts %}
+          {% for a in alerts %}
+            <tr>
+              <td class="font-monospace fw-bold">#INC-{{ a.id }}</td>
+              <td class="text-muted small">{{ a.timestamp | string | truncate(19, True, '') }}</td>
+              <td><span class="ip-badge">{{ a.src_ip }}</span></td>
+              <td><span class="ip-badge">{{ a.dst_ip }}</span></td>
+              <td>
+                <span class="fw-semibold {% if 'Exfiltration' in a.alert_type %}text-danger{% elif 'Suspicious' in a.alert_type %}text-warning{% else %}text-dark{% endif %}">
+                  {{ a.alert_type }}
+                </span>
+              </td>
+              <td>
+                <span class="risk-pill {{ a.severity.lower() }}">{{ "%.0f"|format(a.risk_score) }}/100</span>
+              </td>
+              <td>
+                <span class="badge-severity {{ a.severity.lower() }}">{{ a.severity }}</span>
+              </td>
+              <td>
+                {% if a.status == 'New' %}
+                  <span class="badge bg-primary-subtle text-primary border">New</span>
+                {% elif a.status == 'Under Investigation' %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis border">Investigating</span>
+                {% elif a.status == 'Confirmed Suspicious' %}
+                  <span class="badge bg-danger-subtle text-danger border">Confirmed Exfil</span>
+                {% elif a.status == 'False Positive' %}
+                  <span class="badge bg-success-subtle text-success border">False Positive</span>
+                {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary border">{{ a.status }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <button class="btn btn-sm btn-ns-primary py-0 px-2" style="font-size: 0.75rem;" onclick="openIncidentDetails({{ a.id }})">
+                  <i class="bi bi-clipboard2-pulse"></i> Investigate
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="9" class="text-center py-4 text-muted">
+              <i class="bi bi-check2-all display-6 text-success d-block mb-2"></i>
+              No incidents matching the current filter.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- INCIDENT INVESTIGATION MODAL -->
+<div class="modal fade" id="incidentDetailModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="modalIncidentTitle">
+          <i class="bi bi-shield-lock-fill text-danger me-1"></i> Incident Dossier #INC-001
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Metadata Overview -->
+        <div class="row g-2 mb-3">
+          <div class="col-sm-3">
+            <div class="p-2 border rounded bg-light text-center">
+              <div class="text-muted small">Risk Score</div>
+              <div class="h4 fw-bold text-danger mb-0" id="incRiskScore">88/100</div>
+              <span class="badge bg-danger" id="incSeverityBadge">Critical</span>
+            </div>
+          </div>
+          <div class="col-sm-3">
+            <div class="p-2 border rounded bg-light text-center">
+              <div class="text-muted small">Originating Host</div>
+              <div class="fw-bold font-monospace text-dark mb-0" id="incSrcIp">192.168.1.142</div>
+              <span class="small text-muted" id="incSrcPort">Port: 58810</span>
+            </div>
+          </div>
+          <div class="col-sm-3">
+            <div class="p-2 border rounded bg-light text-center">
+              <div class="text-muted small">Destination IP</div>
+              <div class="fw-bold font-monospace text-danger mb-0" id="incDstIp">198.51.100.77</div>
+              <span class="small text-muted" id="incDstPort">Port: 8443</span>
+            </div>
+          </div>
+          <div class="col-sm-3">
+            <div class="p-2 border rounded bg-light text-center">
+              <div class="text-muted small">Outbound Payload</div>
+              <div class="fw-bold font-monospace text-dark mb-0" id="incBytesSent">14.2 MB</div>
+              <span class="small text-danger fw-semibold" id="incRatio">98.5% Outbound</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detection Summary -->
+        <div class="mb-3">
+          <h6 class="fw-bold small text-secondary">AI Detection Rationale:</h6>
+          <div class="alert alert-light border small" id="incSummary">Loading detection reason...</div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="mb-3">
+          <h6 class="fw-bold small text-secondary">Incident Timeline of Events:</h6>
+          <div class="border rounded p-2 bg-light font-monospace small" id="incTimeline" style="max-height: 120px; overflow-y: auto;">
+          </div>
+        </div>
+
+        <!-- Actionable SOC Recommendations -->
+        <div class="mb-3">
+          <h6 class="fw-bold small text-secondary">SOC Recommended Remediation Checklist:</h6>
+          <div id="incRecommendations" class="small text-dark"></div>
+        </div>
+
+        <hr>
+
+        <!-- Analyst Feedback Form -->
+        <form id="incidentFeedbackForm">
+          <input type="hidden" id="feedbackAlertId">
+          <div class="row g-2 mb-3">
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Update Investigation Status:</label>
+              <select id="feedbackStatusSelect" class="form-select form-select-sm">
+                <option value="Under Investigation">Under Investigation</option>
+                <option value="Confirmed Suspicious">Confirmed Suspicious / Escalated</option>
+                <option value="False Positive">False Positive / Legitimate Traffic</option>
+                <option value="Resolved">Resolved / Mitigated</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Adaptive Baseline Feedback:</label>
+              <div class="form-text small" style="margin-top: 0.4rem;">
+                Marking as <b>False Positive</b> automatically feeds this egress pattern into the device's behavioral baseline.
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Analyst Notes & Findings:</label>
+            <textarea id="feedbackNotesInput" class="form-control" rows="2" placeholder="Record investigation findings, user interview notes, or containment steps taken..."></textarea>
+          </div>
+
+          <div class="text-end">
+            <button type="submit" class="btn btn-sm btn-ns-primary px-3">
+              <i class="bi bi-save me-1"></i> Save Case Status & Feedback
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let currentDetailModal = null;
+
+  async function openIncidentDetails(alertId) {
+    try {
+      const resp = await fetch(`{{ url_for('api_incident_details') }}?id=${alertId}`);
+      const data = await resp.json();
+      if (!data || data.error) {
+        showToast(data.error || 'Incident not found', 'text-bg-danger');
+        return;
+      }
+
+      document.getElementById('modalIncidentTitle').innerHTML = `<i class="bi bi-shield-lock-fill text-danger me-1"></i> Incident Dossier #INC-${data.id} – ${data.alert_type}`;
+      document.getElementById('incRiskScore').innerText = `${data.risk_score.toFixed(0)}/100`;
+      document.getElementById('incSeverityBadge').className = `badge bg-${data.severity.toLowerCase() === 'critical' ? 'danger' : (data.severity.toLowerCase() === 'high' ? 'warning text-dark' : 'secondary')}`;
+      document.getElementById('incSeverityBadge').innerText = data.severity;
+      
+      document.getElementById('incSrcIp').innerText = data.src_ip;
+      document.getElementById('incSrcPort').innerText = `Port: ${data.src_port || 'N/A'}`;
+      document.getElementById('incDstIp').innerText = data.dst_ip;
+      document.getElementById('incDstPort').innerText = `Port: ${data.dst_port || 'N/A'} (${data.service || 'Gen'})`;
+      
+      document.getElementById('incBytesSent').innerText = `${(data.bytes_sent).toLocaleString()} B`;
+      document.getElementById('incRatio').innerText = `${(data.outbound_inbound_ratio * 100).toFixed(1)}% Outbound`;
+
+      document.getElementById('incSummary').innerText = data.summary;
+
+      // Timeline
+      const tl = document.getElementById('incTimeline');
+      let tlItems = [];
+      try { tlItems = JSON.parse(data.incident_timeline_json || '[]'); } catch(e){}
+      tl.innerHTML = tlItems.map(item => `<div><span class="text-muted">[${item.time}]</span> ${item.event}</div>`).join('') || '<div>No timeline logged.</div>';
+
+      // Recommendations
+      const recs = document.getElementById('incRecommendations');
+      let recList = [];
+      try { recList = JSON.parse(data.recommended_actions_json || '[]'); } catch(e){}
+      recs.innerHTML = recList.map(r => `<div class="mb-1"><i class="bi bi-arrow-right-circle-fill text-primary me-1"></i> ${r}</div>`).join('') || '<div>Standard SOC containment procedures apply.</div>';
+
+      // Feedback form
+      document.getElementById('feedbackAlertId').value = data.id;
+      document.getElementById('feedbackStatusSelect').value = data.status || 'Under Investigation';
+      document.getElementById('feedbackNotesInput').value = data.analyst_notes || '';
+
+      if (!currentDetailModal) {
+        currentDetailModal = new bootstrap.Modal(document.getElementById('incidentDetailModal'));
+      }
+      currentDetailModal.show();
+    } catch(err) {
+      console.error(err);
+      showToast('Error retrieving incident dossier.', 'text-bg-danger');
+    }
+  }
+
+  // Submit Feedback & False Positive Loop
+  document.getElementById('incidentFeedbackForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const alertId = document.getElementById('feedbackAlertId').value;
+    const status = document.getElementById('feedbackStatusSelect').value;
+    const notes = document.getElementById('feedbackNotesInput').value;
+
+    try {
+      const resp = await fetch('{{ url_for("api_update_incident_feedback") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alert_id: alertId, status: status, notes: notes })
+      });
+      const data = await resp.json();
+      if (resp.status === 200) {
+        showToast(`Incident #INC-${alertId} updated. Status: ${status}`, 'text-bg-success');
+        if (currentDetailModal) currentDetailModal.hide();
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast(data.error || 'Failed to update incident', 'text-bg-danger');
+      }
+    } catch(err) {
+      console.error(err);
+    }
+  });
+
+  // Check URL query param e.g. ?id=1
+  document.addEventListener('DOMContentLoaded', function() {
+    const params = new URLSearchParams(window.location.search);
+    const incidentId = params.get('id');
+    if (incidentId) {
+      openIncidentDetails(incidentId);
+    }
+  });
+</script>
+{% endblock %}

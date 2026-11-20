@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}Overview{% endblock %}
+{% block page_title %}Security Overview{% endblock %}
+{% block page_subtitle %}Enterprise Network Telemetry & Behavioral Threat Posture{% endblock %}
+
+{% block content %}
+<!-- KPI METRICS ROW -->
+<div class="row g-3 mb-4">
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="stat-card">
+      <div class="stat-icon primary">
+        <i class="bi bi-activity"></i>
+      </div>
+      <div>
+        <div class="stat-label">Total Flows</div>
+        <div class="stat-value" id="kpiTotalFlows">{{ stats.total_flows | default(0) }}</div>
+        <div class="stat-meta text-success"><i class="bi bi-arrow-up-right"></i> Live Ingestion</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="stat-card">
+      <div class="stat-icon success">
+        <i class="bi bi-shield-check"></i>
+      </div>
+      <div>
+        <div class="stat-label">Normal Traffic</div>
+        <div class="stat-value text-success" id="kpiNormalFlows">{{ stats.normal_count | default(0) }}</div>
+        <div class="stat-meta text-muted">{{ stats.normal_pct | default('0') }}% Nominal</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="stat-card">
+      <div class="stat-icon warning">
+        <i class="bi bi-exclamation-circle-fill"></i>
+      </div>
+      <div>
+        <div class="stat-label">Suspicious Flows</div>
+        <div class="stat-value text-warning" id="kpiSuspiciousFlows">{{ stats.suspicious_count | default(0) }}</div>
+        <div class="stat-meta text-muted">Deviating egress</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="stat-card">
+      <div class="stat-icon danger">
+        <i class="bi bi-database-fill-up"></i>
+      </div>
+      <div>
+        <div class="stat-label">Potential Exfil</div>
+        <div class="stat-value text-danger" id="kpiExfilFlows">{{ stats.exfil_count | default(0) }}</div>
+        <div class="stat-meta text-danger fw-semibold">High Priority</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="stat-card">
+      <div class="stat-icon danger" style="background-color: #fee2e2; color: #991b1b;">
+        <i class="bi bi-bell-fill"></i>
+      </div>
+      <div>
+        <div class="stat-label">Critical Alerts</div>
+        <div class="stat-value" style="color: #991b1b;" id="kpiCriticalAlerts">{{ stats.critical_count | default(0) }}</div>
+        <div class="stat-meta text-muted">Immediate action</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-md-4 col-sm-6">
+    <div class="stat-card">
+      <div class="stat-icon info">
+        <i class="bi bi-speedometer"></i>
+      </div>
+      <div>
+        <div class="stat-label">Mean Anomaly Score</div>
+        <div class="stat-value text-primary" id="kpiAvgIso">{{ stats.avg_iso_score | default('0.18') }}</div>
+        <div class="stat-meta text-muted">Scale: 0.00 – 1.00</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CHARTS ROW -->
+<div class="row g-3 mb-4">
+  <!-- Traffic Ingestion Volume (Line/Bar) -->
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-graph-up text-primary"></i> Outbound vs Inbound Byte Volume (Recent Flows)</h3>
+        <span class="badge bg-light text-secondary border">Real-Time Telemetry</span>
+      </div>
+      <div class="card-body">
+        <div style="height: 280px; position: relative;">
+          <canvas id="trafficVolumeChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Threat Classification Doughnut -->
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-pie-chart-fill text-primary"></i> AI Threat Distribution</h3>
+        <span class="badge bg-light text-secondary border">Random Forest</span>
+      </div>
+      <div class="card-body d-flex flex-column align-items-center justify-content-center">
+        <div style="height: 240px; width: 100%; position: relative;">
+          <canvas id="threatDistributionChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SECONDARY CHARTS & RECENT INCIDENTS -->
+<div class="row g-3">
+  <!-- Risk Severity Distribution -->
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-bar-chart-fill text-primary"></i> Risk Severity Breakdown</h3>
+        <span class="badge bg-light text-secondary border">Dynamic Risk</span>
+      </div>
+      <div class="card-body">
+        <div style="height: 250px; position: relative;">
+          <canvas id="severityBarChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Security Alerts Table -->
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-shield-exclamation text-danger"></i> Recent Flagged Network Incidents</h3>
+        <a href="{{ url_for('incidents') }}" class="btn btn-sm btn-outline-primary">View All Incidents</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Source Host</th>
+              <th>Destination</th>
+              <th>Alert Classification</th>
+              <th>Risk Score</th>
+              <th>Severity</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="overviewAlertsTableBody">
+            {% if recent_alerts %}
+              {% for a in recent_alerts %}
+                <tr>
+                  <td class="text-muted small">{{ a.timestamp | string | truncate(19, True, '') }}</td>
+                  <td><span class="ip-badge">{{ a.src_ip }}</span></td>
+                  <td><span class="ip-badge">{{ a.dst_ip }}</span></td>
+                  <td>
+                    <span class="fw-semibold {% if 'Exfiltration' in a.alert_type %}text-danger{% elif 'Suspicious' in a.alert_type %}text-warning{% else %}text-dark{% endif %}">
+                      {{ a.alert_type }}
+                    </span>
+                  </td>
+                  <td>
+                    <span class="risk-pill {{ a.severity.lower() }}">{{ "%.0f"|format(a.risk_score) }}/100</span>
+                  </td>
+                  <td>
+                    <span class="badge-severity {{ a.severity.lower() }}">
+                      {{ a.severity }}
+                    </span>
+                  </td>
+                  <td>
+                    <a href="{{ url_for('incidents') }}?id={{ a.id }}" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.75rem;">
+                      Investigate
+                    </a>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="7" class="text-center py-4 text-muted">
+                  <i class="bi bi-shield-check display-6 d-block mb-2 text-success"></i>
+                  No critical incidents detected. Network traffic is within nominal parameters.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Initialize Chart.js visualizations
+  document.addEventListener('DOMContentLoaded', function() {
+    const chartData = {{ chart_json | safe }};
+
+    // 1. Traffic Volume Chart
+    const ctxVol = document.getElementById('trafficVolumeChart').getContext('2d');
+    new Chart(ctxVol, {
+      type: 'bar',
+      data: {
+        labels: chartData.volume_labels,
+        datasets: [
+          {
+            label: 'Bytes Sent (Outbound)',
+            data: chartData.bytes_sent,
+            backgroundColor: '#2563eb',
+            borderRadius: 4
+          },
+          {
+            label: 'Bytes Received (Inbound)',
+            data: chartData.bytes_recv,
+            backgroundColor: '#94a3b8',
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} Bytes`
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: '#f1f5f9' }, beginAtZero: true }
+        }
+      }
+    });
+
+    // 2. Threat Distribution Doughnut
+    const ctxThreat = document.getElementById('threatDistributionChart').getContext('2d');
+    new Chart(ctxThreat, {
+      type: 'doughnut',
+      data: {
+        labels: ['Normal', 'Suspicious Outbound', 'Abnormal Conn', 'Potential Exfiltration'],
+        datasets: [{
+          data: chartData.threat_counts,
+          backgroundColor: ['#16a34a', '#ea580c', '#d97706', '#dc2626'],
+          borderWidth: 2,
+          borderColor: '#ffffff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }
+        },
+        cutout: '65%'
+      }
+    });
+
+    // 3. Severity Bar Chart
+    const ctxSev = document.getElementById('severityBarChart').getContext('2d');
+    new Chart(ctxSev, {
+      type: 'bar',
+      data: {
+        labels: ['Low', 'Medium', 'High', 'Critical'],
+        datasets: [{
+          label: 'Incidents Count',
+          data: chartData.severity_counts,
+          backgroundColor: ['#16a34a', '#d97706', '#ea580c', '#dc2626'],
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: '#f1f5f9' }, beginAtZero: true, ticks: { stepSize: 1 } }
+        }
+      }
+    });
+  });
+</script>
+{% endblock %}

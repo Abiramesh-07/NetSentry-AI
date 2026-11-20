@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Live Network Monitoring{% endblock %}
+{% block page_title %}Live Network Monitoring{% endblock %}
+{% block page_subtitle %}Real-Time Packet Flow Ingestion & Continuous Anomaly Profiling{% endblock %}
+
+{% block content %}
+<!-- CONTROL & STATUS TOOLBAR -->
+<div class="card mb-4 border-0 shadow-sm" style="background: linear-gradient(to right, #ffffff, #f8fafc); border: 1px solid var(--ns-border) !important;">
+  <div class="card-body p-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <!-- Left: Adapter Info & State -->
+      <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center px-3 py-2 bg-white rounded border">
+          <span class="status-indicator live" id="liveDot"></span>
+          <div>
+            <div class="fw-bold small" id="liveStateLabel">Stream Active (Ingesting)</div>
+            <div class="text-muted" style="font-size: 0.72rem;">Interface: <span class="badge bg-secondary-subtle text-secondary border">Simulated eth0 [RFC1918 / Multi-Host]</span></div>
+          </div>
+        </div>
+
+        <!-- Stream Toggle Button -->
+        <button id="toggleStreamBtn" class="btn btn-sm btn-outline-danger" onclick="toggleStream()">
+          <i class="bi bi-pause-fill"></i> Pause Feed
+        </button>
+
+        <!-- Speed Selector -->
+        <div class="btn-group btn-group-sm" role="group">
+          <button type="button" class="btn btn-outline-secondary active" onclick="setSpeed(1.0, this)">1x</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="setSpeed(2.5, this)">2.5x</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="setSpeed(5.0, this)">5x</button>
+        </div>
+      </div>
+
+      <!-- Right: Attack Simulation Triggers -->
+      <div class="d-flex align-items-center gap-2">
+        <span class="text-muted small fw-semibold">Inject Scenario:</span>
+        <button class="btn btn-sm btn-outline-danger" onclick="injectAttack('exfiltration')">
+          <i class="bi bi-database-fill-up"></i> Data Exfiltration
+        </button>
+        <button class="btn btn-sm btn-outline-warning" onclick="injectAttack('dns_tunnel')">
+          <i class="bi bi-hdd-network"></i> DNS Tunnel
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="injectAttack('c2_beacon')">
+          <i class="bi bi-broadcast-pin"></i> C2 Beacon
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LIVE METRICS & THROUGHPUT ROW -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-3 col-md-6">
+    <div class="stat-card">
+      <div class="stat-icon primary"><i class="bi bi-hdd-stack"></i></div>
+      <div>
+        <div class="stat-label">Buffer Capacity</div>
+        <div class="stat-value" id="bufferCount">0</div>
+        <div class="stat-meta">In-memory flow ring</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-3 col-md-6">
+    <div class="stat-card">
+      <div class="stat-icon danger"><i class="bi bi-shield-slash"></i></div>
+      <div>
+        <div class="stat-label">Active Flagged</div>
+        <div class="stat-value text-danger" id="liveAlertsCount">0</div>
+        <div class="stat-meta">Egress anomalies</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header py-2">
+        <h3 class="card-title" style="font-size: 0.85rem;"><i class="bi bi-activity text-primary"></i> Live Throughput (Bytes per Second)</h3>
+      </div>
+      <div class="card-body p-2">
+        <div style="height: 70px; width: 100%;">
+          <canvas id="liveThroughputChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LIVE TELEMETRY TABLE -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h3 class="card-title">
+      <i class="bi bi-table text-primary"></i> Real-Time Flow Telemetry
+    </h3>
+    <span class="text-muted small">Auto-refreshing every 2s</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Time (UTC)</th>
+          <th>Source Host</th>
+          <th>Destination</th>
+          <th>Proto / Service</th>
+          <th>Bytes Sent</th>
+          <th>Bytes Recv</th>
+          <th>Outbound Ratio</th>
+          <th>Duration</th>
+          <th>Anomaly Score</th>
+          <th>Risk / Severity</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="liveFlowsTableBody">
+        <tr>
+          <td colspan="11" class="text-center py-4 text-muted">
+            <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+            Connecting to live network capture stream...
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let isStreamActive = true;
+  let throughputChart = null;
+  const throughputHistory = Array(20).fill(0);
+  const throughputLabels = Array(20).fill('');
+
+  // Initialize Throughput Sparkline Chart
+  const ctx = document.getElementById('liveThroughputChart').getContext('2d');
+  throughputChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: throughputLabels,
+      datasets: [{
+        data: throughputHistory,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.08)',
+        fill: true,
+        tension: 0.3,
+        borderWidth: 2,
+        pointRadius: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { display: false },
+        y: { display: false, beginAtZero: true }
+      }
+    }
+  });
+
+  // Fetch Live Feed
+  async function fetchLiveFeed() {
+    try {
+      const resp = await fetch('{{ url_for("api_live_feed") }}');
+      const data = await resp.json();
+      if (!data || !data.events) return;
+
+      document.getElementById('bufferCount').innerText = data.events.length;
+      const flagged = data.events.filter(e => e.risk_score >= 40.0 || e.rf_class !== 'Normal Traffic').length;
+      document.getElementById('liveAlertsCount').innerText = flagged;
+
+      // Update Throughput Chart
+      if (data.events.length > 0) {
+        const latestBytes = data.events[0].bytes_sent + data.events[0].bytes_recv;
+        throughputHistory.shift();
+        throughputHistory.push(latestBytes);
+        throughputChart.update();
+      }
+
+      // Populate Table
+      const tbody = document.getElementById('liveFlowsTableBody');
+      if (data.events.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted">Awaiting traffic ingestion...</td></tr>';
+        return;
+      }
+
+      let rowsHtml = '';
+      data.events.forEach(e => {
+        const timeStr = e.timestamp.split(' ')[1] || e.timestamp;
+        const sevClass = e.severity ? e.severity.toLowerCase() : 'low';
+        const isAnom = e.risk_score >= 40.0;
+        const rowBg = isAnom ? 'style="background-color: #fffaf0;"' : '';
+
+        rowsHtml += `
+          <tr ${rowBg}>
+            <td class="text-muted small font-monospace">${timeStr}</td>
+            <td><span class="ip-badge">${e.src_ip}</span></td>
+            <td><span class="ip-badge">${e.dst_ip}</span></td>
+            <td><span class="badge bg-light text-dark border">${e.protocol} / ${e.service || 'Gen'}</span></td>
+            <td class="font-monospace fw-semibold ${e.bytes_sent > 1000000 ? 'text-danger' : ''}">${e.bytes_sent.toLocaleString()} B</td>
+            <td class="font-monospace text-muted">${e.bytes_recv.toLocaleString()} B</td>
+            <td>
+              <div class="progress" style="height: 6px; width: 60px;">
+                <div class="progress-bar ${e.outbound_inbound_ratio > 0.8 ? 'bg-danger' : 'bg-primary'}" role="progressbar" style="width: ${e.outbound_inbound_ratio*100}%"></div>
+              </div>
+              <span style="font-size: 0.7rem; color: #64748b;">${(e.outbound_inbound_ratio*100).toFixed(0)}% out</span>
+            </td>
+            <td class="small text-muted">${e.duration}s</td>
+            <td>
+              <span class="small font-monospace ${e.isolation_score > 0.6 ? 'text-danger fw-bold' : 'text-secondary'}">
+                ${e.isolation_score.toFixed(2)}
+              </span>
+            </td>
+            <td>
+              <span class="badge-severity ${sevClass}">${e.risk_score.toFixed(0)} (${e.severity})</span>
+            </td>
+            <td>
+              ${e.alert_id ? `<a href="{{ url_for('incidents') }}?id=${e.alert_id}" class="btn btn-sm btn-outline-danger py-0 px-2" style="font-size: 0.72rem;">Investigate</a>` : `<span class="text-muted small">Nominal</span>`}
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = rowsHtml;
+    } catch (err) {
+      console.error("Live feed fetch error:", err);
+    }
+  }
+
+  // Toggle Stream
+  async function toggleStream() {
+    try {
+      const resp = await fetch('{{ url_for("api_toggle_stream") }}', { method: 'POST' });
+      const res = await resp.json();
+      isStreamActive = res.is_active;
+      
+      const btn = document.getElementById('toggleStreamBtn');
+      const dot = document.getElementById('liveDot');
+      const lbl = document.getElementById('liveStateLabel');
+
+      if (isStreamActive) {
+        btn.innerHTML = '<i class="bi bi-pause-fill"></i> Pause Feed';
+        btn.className = 'btn btn-sm btn-outline-danger';
+        dot.className = 'status-indicator live';
+        lbl.innerText = 'Stream Active (Ingesting)';
+        showToast('Live network capture stream resumed.');
+      } else {
+        btn.innerHTML = '<i class="bi bi-play-fill"></i> Resume Feed';
+        btn.className = 'btn btn-sm btn-outline-success';
+        dot.className = 'status-indicator paused';
+        lbl.innerText = 'Stream Paused';
+        showToast('Live stream paused by analyst.');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // Set Speed
+  async function setSpeed(factor, btn) {
+    document.querySelectorAll('.btn-group .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    await fetch('{{ url_for("api_set_speed") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ speed: factor })
+    });
+    showToast(`Stream speed adjusted to ${factor}x.`);
+  }
+
+  // Inject Attack Scenario
+  async function injectAttack(type) {
+    try {
+      const resp = await fetch('{{ url_for("api_inject_scenario") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type })
+      });
+      const data = await resp.json();
+      showToast(`Injected ${type} scenario flow! Risk: ${data.event.risk_score} (${data.event.severity})`, 'text-bg-danger');
+      fetchLiveFeed();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // Periodic polling
+  setInterval(fetchLiveFeed, 2000);
+  fetchLiveFeed();
+</script>
+{% endblock %}

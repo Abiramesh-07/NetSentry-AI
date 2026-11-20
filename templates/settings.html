@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+{% block page_title %}System Settings & Model Configuration{% endblock %}
+{% block page_subtitle %}Detection Engine Weights, Anomaly Sensitivity, and Model Retraining{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- Left Column: Detection Weights & Thresholds -->
+  <div class="col-lg-7">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h3 class="card-title text-primary"><i class="bi bi-sliders text-primary"></i> Dynamic Risk Scoring Engine Weights</h3>
+        <span class="text-muted small">Weights must sum to 1.0 (100%)</span>
+      </div>
+      <div class="card-body">
+        <form id="weightsSettingsForm">
+          <div class="mb-3">
+            <div class="d-flex justify-content-between small fw-semibold mb-1">
+              <span>Isolation Forest Anomaly Weight:</span>
+              <span id="txtIsoWeight" class="font-monospace text-primary">{{ settings.get('isolation_weight', '0.30') }}</span>
+            </div>
+            <input type="range" class="form-range" id="inputIsoWeight" min="0.05" max="0.60" step="0.05" value="{{ settings.get('isolation_weight', '0.30') }}" oninput="updateWeightDisplay()">
+          </div>
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between small fw-semibold mb-1">
+              <span>Random Forest Classification Weight:</span>
+              <span id="txtRfWeight" class="font-monospace text-primary">{{ settings.get('rf_weight', '0.30') }}</span>
+            </div>
+            <input type="range" class="form-range" id="inputRfWeight" min="0.05" max="0.60" step="0.05" value="{{ settings.get('rf_weight', '0.30') }}" oninput="updateWeightDisplay()">
+          </div>
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between small fw-semibold mb-1">
+              <span>Adaptive Behavioral Deviation Weight:</span>
+              <span id="txtBehWeight" class="font-monospace text-primary">{{ settings.get('behavior_weight', '0.20') }}</span>
+            </div>
+            <input type="range" class="form-range" id="inputBehWeight" min="0.05" max="0.50" step="0.05" value="{{ settings.get('behavior_weight', '0.20') }}" oninput="updateWeightDisplay()">
+          </div>
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between small fw-semibold mb-1">
+              <span>Outbound Volume Anomaly Weight:</span>
+              <span id="txtVolWeight" class="font-monospace text-primary">{{ settings.get('volume_weight', '0.10') }}</span>
+            </div>
+            <input type="range" class="form-range" id="inputVolWeight" min="0.05" max="0.40" step="0.05" value="{{ settings.get('volume_weight', '0.10') }}" oninput="updateWeightDisplay()">
+          </div>
+
+          <div class="mb-4">
+            <div class="d-flex justify-content-between small fw-semibold mb-1">
+              <span>Destination Threat Reputation Weight:</span>
+              <span id="txtRepWeight" class="font-monospace text-primary">{{ settings.get('reputation_weight', '0.10') }}</span>
+            </div>
+            <input type="range" class="form-range" id="inputRepWeight" min="0.05" max="0.40" step="0.05" value="{{ settings.get('reputation_weight', '0.10') }}" oninput="updateWeightDisplay()">
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center border-top pt-3">
+            <span class="small text-muted" id="totalWeightsIndicator">Total Combined Weight: 1.00</span>
+            <button type="submit" class="btn btn-sm btn-ns-primary px-3">
+              <i class="bi bi-save me-1"></i> Save Risk Weights
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Threat Intel API Keys -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title text-primary"><i class="bi bi-key-fill text-primary"></i> External Threat Intelligence API Integrations</h3>
+      </div>
+      <div class="card-body">
+        <form id="apiKeysForm">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">VirusTotal v3 API Key</label>
+            <input type="password" id="vtKeyInput" class="form-control form-control-sm font-monospace" placeholder="Enter API key for live VirusTotal IP checks..." value="{{ settings.get('virustotal_api_key', '') }}">
+            <div class="form-text small">Used for live IP reputation verification if local threat intelligence cache misses.</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">AbuseIPDB API Key</label>
+            <input type="password" id="abuseKeyInput" class="form-control form-control-sm font-monospace" placeholder="Enter AbuseIPDB API key..." value="{{ settings.get('abuseipdb_api_key', '') }}">
+          </div>
+
+          <div class="text-end">
+            <button type="submit" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-check-lg me-1"></i> Update API Keys
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Column: Model Retraining & Maintenance -->
+  <div class="col-lg-5">
+    <!-- Model Retraining Card -->
+    <div class="card mb-4 border-start border-warning border-3">
+      <div class="card-header bg-white">
+        <h3 class="card-title text-dark"><i class="bi bi-arrow-repeat text-warning"></i> AI Model Retraining</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Trigger on-demand training of the Isolation Forest anomaly detector and Random Forest multi-class classifier using fresh benchmark data modeled after CIC-IDS2018.
+        </p>
+        <div class="p-3 border rounded bg-light mb-3">
+          <div class="d-flex justify-content-between small mb-1">
+            <span class="text-muted">Last Model Version:</span>
+            <span class="fw-semibold text-dark">v1.0-cicids</span>
+          </div>
+          <div class="d-flex justify-content-between small mb-1">
+            <span class="text-muted">Current Test Accuracy:</span>
+            <span class="fw-semibold text-success">{{ "%.1f"|format(metrics.accuracy * 100) }}%</span>
+          </div>
+          <div class="d-flex justify-content-between small">
+            <span class="text-muted">Training Sample Size:</span>
+            <span class="fw-semibold text-dark">{{ metrics.sample_count }} flows</span>
+          </div>
+        </div>
+
+        <button id="btnRetrainModel" class="btn btn-sm btn-outline-warning w-100 py-2 fw-semibold" onclick="triggerModelRetrain()">
+          <i class="bi bi-cpu-fill me-1"></i> Retrain AI Detection Models Now
+        </button>
+      </div>
+    </div>
+
+    <!-- Reset Behavioral Baseline Card -->
+    <div class="card border-start border-danger border-3">
+      <div class="card-header bg-white">
+        <h3 class="card-title text-danger"><i class="bi bi-arrow-counterclockwise text-danger"></i> Reset Device Baselines</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Resets all learned device profiles to the default factory enterprise workstation baseline. Useful if network topology has fundamentally shifted.
+        </p>
+        <button class="btn btn-sm btn-outline-danger w-100 py-2 fw-semibold" onclick="resetBaselines()">
+          <i class="bi bi-trash3 me-1"></i> Reset All Behavioral Profiles
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function updateWeightDisplay() {
+    const iso = parseFloat(document.getElementById('inputIsoWeight').value);
+    const rf = parseFloat(document.getElementById('inputRfWeight').value);
+    const beh = parseFloat(document.getElementById('inputBehWeight').value);
+    const vol = parseFloat(document.getElementById('inputVolWeight').value);
+    const rep = parseFloat(document.getElementById('inputRepWeight').value);
+
+    document.getElementById('txtIsoWeight').innerText = iso.toFixed(2);
+    document.getElementById('txtRfWeight').innerText = rf.toFixed(2);
+    document.getElementById('txtBehWeight').innerText = beh.toFixed(2);
+    document.getElementById('txtVolWeight').innerText = vol.toFixed(2);
+    document.getElementById('txtRepWeight').innerText = rep.toFixed(2);
+
+    const total = iso + rf + beh + vol + rep;
+    const ind = document.getElementById('totalWeightsIndicator');
+    ind.innerText = `Total Combined Weight: ${total.toFixed(2)}`;
+    ind.className = Math.abs(total - 1.0) < 0.01 ? 'small text-success fw-bold' : 'small text-warning fw-bold';
+  }
+
+  document.getElementById('weightsSettingsForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const payload = {
+      isolation_weight: document.getElementById('inputIsoWeight').value,
+      rf_weight: document.getElementById('inputRfWeight').value,
+      behavior_weight: document.getElementById('inputBehWeight').value,
+      volume_weight: document.getElementById('inputVolWeight').value,
+      reputation_weight: document.getElementById('inputRepWeight').value
+    };
+
+    try {
+      const resp = await fetch('{{ url_for("api_save_settings") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (resp.status === 200) {
+        showToast('Dynamic risk weights successfully updated!', 'text-bg-success');
+      } else {
+        showToast('Failed to save settings.', 'text-bg-danger');
+      }
+    } catch(err) {
+      console.error(err);
+    }
+  });
+
+  document.getElementById('apiKeysForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const payload = {
+      virustotal_api_key: document.getElementById('vtKeyInput').value,
+      abuseipdb_api_key: document.getElementById('abuseKeyInput').value
+    };
+
+    try {
+      const resp = await fetch('{{ url_for("api_save_settings") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (resp.status === 200) {
+        showToast('API Keys successfully saved!', 'text-bg-success');
+      } else {
+        showToast('Failed to update API keys.', 'text-bg-danger');
+      }
+    } catch(err) {
+      console.error(err);
+    }
+  });
+
+  async function triggerModelRetrain() {
+    const btn = document.getElementById('btnRetrainModel');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Training Random Forest & Isolation Forest...';
+
+    try {
+      const resp = await fetch('{{ url_for("api_retrain_model") }}', { method: 'POST' });
+      const data = await resp.json();
+      if (resp.status === 200) {
+        showToast(`Retraining complete! Accuracy: ${(data.accuracy * 100).toFixed(1)}%, F1: ${(data.f1_score * 100).toFixed(1)}%`, 'text-bg-success');
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        showToast(data.error || 'Retraining failed', 'text-bg-danger');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-cpu-fill me-1"></i> Retrain AI Detection Models Now';
+      }
+    } catch(err) {
+      console.error(err);
+      btn.disabled = false;
+    }
+  }
+
+  async function resetBaselines() {
+    if (!confirm('Are you sure you want to reset all device baseline profiles to factory defaults?')) return;
+    try {
+      const resp = await fetch('{{ url_for("api_reset_baselines") }}', { method: 'POST' });
+      if (resp.status === 200) {
+        showToast('All device baselines reset to default.', 'text-bg-warning');
+        setTimeout(() => location.reload(), 1000);
+      }
+    } catch(err) {
+      console.error(err);
+    }
+  }
+</script>
+{% endblock %}

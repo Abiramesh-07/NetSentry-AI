@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}Behavioral Analytics{% endblock %}
+{% block page_title %}Behavioral Analytics & Device Baselines{% endblock %}
+{% block page_subtitle %}Adaptive Per-Device Statistical Profiles & Anomaly Drift Tracking{% endblock %}
+
+{% block content %}
+<!-- METHODOLOGY EXPLAINER CARD -->
+<div class="card mb-4 border-0 shadow-sm" style="background: linear-gradient(to right, #eff6ff, #f8fafc); border-left: 4px solid var(--ns-primary) !important;">
+  <div class="card-body p-3">
+    <div class="d-flex align-items-center">
+      <div class="me-3 text-primary display-6">
+        <i class="bi bi-shield-shaded"></i>
+      </div>
+      <div>
+        <h6 class="fw-bold text-dark mb-1">Adaptive Learning & Baseline Poisoning Protection</h6>
+        <p class="text-muted small mb-0">
+          NetSentry AI learns normal egress volume, active hours, and connection ratios per individual endpoint. To prevent <i>baseline poisoning</i> (where adversaries slowly train the model to accept high exfiltration volumes), baselines are <b>strictly updated using analyst-validated normal traffic</b>.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BASELINE COMPARISON CHART ROW -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="card-title"><i class="bi bi-bar-chart-steps text-primary"></i> Current Device Egress vs Historical Baseline Mean</h3>
+        <span class="badge bg-light text-secondary border">Z-Score Deviation</span>
+      </div>
+      <div class="card-body">
+        <div style="height: 260px; position: relative;">
+          <canvas id="baselineComparisonChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-clock-history text-primary"></i> Workstation Operating Hours</h3>
+      </div>
+      <div class="card-body text-center d-flex flex-column justify-content-center">
+        <div class="p-3 border rounded bg-light mb-3">
+          <div class="text-muted small">Standard Active Window</div>
+          <div class="h4 fw-bold text-dark mb-0">09:00 – 18:00 UTC</div>
+          <span class="text-success small fw-semibold">Standard Business Day</span>
+        </div>
+        <div class="p-3 border rounded bg-warning-subtle text-warning-emphasis">
+          <div class="small fw-semibold">Off-Hours Risk Multiplier</div>
+          <div class="h5 fw-bold mb-0">+20% Deviation Penalty</div>
+          <span class="small" style="font-size: 0.75rem;">Egress between 22:00–06:00 is heavily scrutinized</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DEVICE BASELINE PROFILES TABLE -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h3 class="card-title"><i class="bi bi-laptop text-primary"></i> Device Behavioral Profiles</h3>
+    <button class="btn btn-sm btn-ns-primary" data-bs-toggle="modal" data-bs-target="#updateBaselineModal">
+      <i class="bi bi-plus-circle me-1"></i> Feed Validated Normal Traffic
+    </button>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Device IP</th>
+          <th>Hostname</th>
+          <th>Total Flows</th>
+          <th>Avg Outbound Bytes</th>
+          <th>Max Outbound Recorded</th>
+          <th>Baseline Ratio</th>
+          <th>Model Confidence</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if profiles %}
+          {% for p in profiles %}
+            <tr>
+              <td><span class="ip-badge fw-bold">{{ p.device_ip }}</span></td>
+              <td>{{ p.hostname }}</td>
+              <td class="font-monospace small">{{ p.total_flows_analyzed }} flows</td>
+              <td class="font-monospace">{{ "{:,.0f}".format(p.avg_bytes_sent) }} B</td>
+              <td class="font-monospace text-secondary">{{ "{:,.0f}".format(p.max_bytes_sent) }} B</td>
+              <td>
+                <span class="small text-muted">{{ "%.1f"|format(p.avg_ratio * 100) }}% out</span>
+              </td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="progress flex-grow-1" style="height: 6px; width: 60px;">
+                    <div class="progress-bar bg-success" style="width: {{ p.baseline_confidence * 100 }}%"></div>
+                  </div>
+                  <span class="small font-monospace">{{ "%.0f"|format(p.baseline_confidence * 100) }}%</span>
+                </div>
+              </td>
+              <td>
+                {% if p.is_whitelisted %}
+                  <span class="badge bg-success-subtle text-success border">Whitelisted</span>
+                {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary border">Monitored</span>
+                {% endif %}
+              </td>
+              <td>
+                <button class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.75rem;" onclick="openTrainDevice('{{ p.device_ip }}', '{{ p.hostname }}')">
+                  Calibrate
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="9" class="text-center py-4 text-muted">No device baseline profiles initialized yet.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL: UPDATE BASELINE WITH VALIDATED NORMAL TRAFFIC -->
+<div class="modal fade" id="updateBaselineModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold"><i class="bi bi-shield-check text-success me-1"></i> Calibrate Baseline with Normal Traffic</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="updateBaselineForm">
+        <div class="modal-body">
+          <p class="text-muted small">
+            Submit a verified normal traffic transfer to incrementally adapt this device's baseline without risking adversarial poisoning.
+          </p>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Device IP Address</label>
+            <input type="text" id="modalDeviceIp" name="device_ip" class="form-control font-monospace" placeholder="192.168.1.105" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Validated Outbound Bytes Sent</label>
+            <input type="number" id="modalBytesSent" name="bytes_sent" class="form-control font-monospace" placeholder="75000" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Outbound / Inbound Ratio (0.0 to 1.0)</label>
+            <input type="number" step="0.01" min="0" max="1" id="modalRatio" name="ratio" class="form-control font-monospace" value="0.65" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-success">Update Device Baseline</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const devData = {{ comparison_json | safe }};
+
+    const ctx = document.getElementById('baselineComparisonChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: devData.ips,
+        datasets: [
+          {
+            label: 'Historical Baseline Mean (Bytes)',
+            data: devData.baseline_means,
+            backgroundColor: '#94a3b8',
+            borderRadius: 4
+          },
+          {
+            label: 'Latest Egress Observed (Bytes)',
+            data: devData.latest_observed,
+            backgroundColor: devData.latest_observed.map((val, idx) => val > devData.baseline_means[idx] * 2.5 ? '#dc2626' : '#2563eb'),
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} Bytes`
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: '#f1f5f9' }, beginAtZero: true }
+        }
+      }
+    });
+  });
+
+  function openTrainDevice(ip, hostname) {
+    document.getElementById('modalDeviceIp').value = ip;
+    const modal = new bootstrap.Modal(document.getElementById('updateBaselineModal'));
+    modal.show();
+  }
+
+  document.getElementById('updateBaselineForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const ip = document.getElementById('modalDeviceIp').value;
+    const bytes = parseFloat(document.getElementById('modalBytesSent').value);
+    const ratio = parseFloat(document.getElementById('modalRatio').value);
+
+    try {
+      const resp = await fetch('{{ url_for("api_update_baseline") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_ip: ip, bytes_sent: bytes, ratio: ratio })
+      });
+      const data = await resp.json();
+      if (resp.status === 200) {
+        showToast(`Baseline for ${ip} successfully updated!`, 'text-bg-success');
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        showToast(data.error || 'Failed to update', 'text-bg-danger');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  });
+</script>
+{% endblock %}

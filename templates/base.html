@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}NetSentry AI{% endblock %} – Adaptive Network Behavior & Exfiltration Detection</title>
+  
+  <!-- Local Vendor Assets for 100% Offline Resilience -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap-icons.min.css') }}">
+  
+  <!-- NetSentry Enterprise Light Theme -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+
+<div class="app-container">
+  <!-- SIDEBAR NAVIGATION -->
+  <aside class="app-sidebar">
+    <a href="{{ url_for('overview') }}" class="sidebar-brand">
+      <div class="brand-icon">
+        <i class="bi bi-shield-lock-fill"></i>
+      </div>
+      <div>
+        <span class="brand-text">NetSentry</span>
+        <span class="brand-badge">AI</span>
+      </div>
+    </a>
+
+    <ul class="sidebar-menu">
+      <li class="menu-category">Network Telemetry</li>
+      <li class="nav-item">
+        <a href="{{ url_for('overview') }}" class="nav-link {% if active_page == 'overview' %}active{% endif %}">
+          <i class="bi bi-grid-1x2-fill"></i> Overview
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="{{ url_for('live_monitoring') }}" class="nav-link {% if active_page == 'live' %}active{% endif %}">
+          <i class="bi bi-broadcast"></i> Live Monitoring
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="{{ url_for('pcap_analysis') }}" class="nav-link {% if active_page == 'pcap' %}active{% endif %}">
+          <i class="bi bi-file-earmark-binary-fill"></i> PCAP Analysis
+        </a>
+      </li>
+
+      <li class="menu-category">AI & Behavioral Security</li>
+      <li class="nav-item">
+        <a href="{{ url_for('ai_threat_detection') }}" class="nav-link {% if active_page == 'ai_threats' %}active{% endif %}">
+          <i class="bi bi-cpu-fill"></i> AI Threat Detection
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="{{ url_for('behavioral_analytics') }}" class="nav-link {% if active_page == 'behavioral' %}active{% endif %}">
+          <i class="bi bi-graph-up-arrow"></i> Behavioral Analytics
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="{{ url_for('threat_intelligence') }}" class="nav-link {% if active_page == 'threat_intel' %}active{% endif %}">
+          <i class="bi bi-globe2"></i> Threat Intelligence
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="{{ url_for('risk_assessment') }}" class="nav-link {% if active_page == 'risk' %}active{% endif %}">
+          <i class="bi bi-speedometer2"></i> Risk Assessment
+        </a>
+      </li>
+
+      <li class="menu-category">Operations & Governance</li>
+      <li class="nav-item">
+        <a href="{{ url_for('incidents') }}" class="nav-link {% if active_page == 'incidents' %}active{% endif %}">
+          <i class="bi bi-exclamation-triangle-fill"></i> Incident Investigation
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="{{ url_for('reports_view') }}" class="nav-link {% if active_page == 'reports' %}active{% endif %}">
+          <i class="bi bi-file-earmark-pdf-fill"></i> Reports
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="{{ url_for('settings_view') }}" class="nav-link {% if active_page == 'settings' %}active{% endif %}">
+          <i class="bi bi-sliders"></i> Settings
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center">
+          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 0.85rem; font-weight: 600;">
+            {{ session.get('username', 'Admin')[0].upper() }}
+          </div>
+          <div style="line-height: 1.2;">
+            <div style="font-size: 0.85rem; font-weight: 600; color: var(--ns-text-main);">{{ session.get('username', 'Admin') }}</div>
+            <div style="font-size: 0.72rem; color: var(--ns-text-muted);">{{ session.get('role', 'SOC Administrator') }}</div>
+          </div>
+        </div>
+        <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-secondary p-1" title="Sign Out">
+          <i class="bi bi-box-arrow-right"></i>
+        </a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN APP AREA -->
+  <main class="app-main">
+    <!-- TOPBAR -->
+    <header class="app-topbar">
+      <div class="topbar-left">
+        <h1 class="page-title">{% block page_title %}Overview{% endblock %}</h1>
+        <span class="page-subtitle">{% block page_subtitle %}Adaptive Network Behavior Analysis{% endblock %}</span>
+      </div>
+
+      <div class="topbar-right">
+        <!-- Live Stream Status Badge -->
+        <div class="d-flex align-items-center bg-light border px-3 py-1 rounded-pill" style="font-size: 0.8rem;">
+          <span class="status-indicator live" id="topbarStatusDot"></span>
+          <span id="topbarStatusText" class="text-secondary fw-semibold">Live Feed: <span class="text-success">Monitoring Active</span></span>
+        </div>
+
+        <!-- Quick PCAP Upload Shortcut -->
+        <a href="{{ url_for('pcap_analysis') }}" class="btn btn-sm btn-ns-primary">
+          <i class="bi bi-cloud-arrow-up-fill me-1"></i> Upload PCAP
+        </a>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div class="app-content">
+      <!-- Flash Messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show shadow-sm" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+
+<!-- Toast Notifications -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 2000;">
+  <div id="nsToast" class="toast align-items-center text-bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toastMessage">Action completed successfully.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Local Vendor Scripts -->
+<script src="{{ url_for('static', filename='vendor/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script>
+  function showToast(msg, bgClass="text-bg-primary") {
+    const toastEl = document.getElementById('nsToast');
+    toastEl.className = `toast align-items-center ${bgClass} border-0`;
+    document.getElementById('toastMessage').innerText = msg;
+    const toast = new bootstrap.Toast(toastEl);
+    toast.show();
+  }
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

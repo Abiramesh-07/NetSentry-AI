@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}AI Threat Detection{% endblock %}
+{% block page_title %}AI Threat Detection Engine{% endblock %}
+{% block page_subtitle %}Hybrid Isolation Forest & Random Forest Multi-Class Flow Classification{% endblock %}
+
+{% block content %}
+<!-- MODEL ARCHITECTURE & EVALUATION CARDS -->
+<div class="row g-3 mb-4">
+  <!-- Isolation Forest Card -->
+  <div class="col-lg-6">
+    <div class="card h-100 border-start border-primary border-3">
+      <div class="card-header bg-white">
+        <div class="d-flex align-items-center justify-content-between">
+          <h3 class="card-title text-primary"><i class="bi bi-diagram-3-fill"></i> Isolation Forest (Unsupervised)</h3>
+          <span class="badge bg-primary-subtle text-primary border">Active Anomaly Engine</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Detects statistical anomalies across high-dimensional feature space (bytes velocity, asymmetric ratios, packet rates) without requiring prior attack labels.
+        </p>
+        <div class="row g-2 text-center">
+          <div class="col-4 p-2 border rounded bg-light">
+            <div class="text-muted small">Estimators</div>
+            <div class="fw-bold text-dark">150 Trees</div>
+          </div>
+          <div class="col-4 p-2 border rounded bg-light">
+            <div class="text-muted small">Contamination</div>
+            <div class="fw-bold text-dark">12.0%</div>
+          </div>
+          <div class="col-4 p-2 border rounded bg-light">
+            <div class="text-muted small">Anomaly Threshold</div>
+            <div class="fw-bold text-primary">&ge; 0.60</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Random Forest Card -->
+  <div class="col-lg-6">
+    <div class="card h-100 border-start border-success border-3">
+      <div class="card-header bg-white">
+        <div class="d-flex align-items-center justify-content-between">
+          <h3 class="card-title text-success"><i class="bi bi-diagram-2-fill"></i> Random Forest Classifier (Supervised)</h3>
+          <span class="badge bg-success-subtle text-success border">CIC-IDS2018 Distribution</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Classifies network behavior into four distinct tactical classes with balanced class weights to identify covert egress and abnormal connection signaling.
+        </p>
+        <div class="row g-2 text-center">
+          <div class="col-3 p-2 border rounded bg-light">
+            <div class="text-muted small">Accuracy</div>
+            <div class="fw-bold text-success">{{ "%.1f"|format(metrics.accuracy * 100) }}%</div>
+          </div>
+          <div class="col-3 p-2 border rounded bg-light">
+            <div class="text-muted small">Precision</div>
+            <div class="fw-bold text-dark">{{ "%.1f"|format(metrics.precision_score * 100) }}%</div>
+          </div>
+          <div class="col-3 p-2 border rounded bg-light">
+            <div class="text-muted small">Recall</div>
+            <div class="fw-bold text-dark">{{ "%.1f"|format(metrics.recall_score * 100) }}%</div>
+          </div>
+          <div class="col-3 p-2 border rounded bg-light">
+            <div class="text-muted small">F1-Score</div>
+            <div class="fw-bold text-primary">{{ "%.1f"|format(metrics.f1_score * 100) }}%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFUSION MATRIX & FEATURE IMPORTANCE -->
+<div class="row g-3 mb-4">
+  <!-- Confusion Matrix -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-grid-3x3 text-primary"></i> Multi-Class Confusion Matrix (Held-out Test Set)</h3>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-bordered text-center align-middle" style="font-size: 0.8rem;">
+            <thead class="table-light">
+              <tr>
+                <th style="font-size: 0.72rem;">Actual \ Predicted</th>
+                <th>Normal</th>
+                <th>Suspicious Out</th>
+                <th>Abnormal Conn</th>
+                <th>Potential Exfil</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for i in range(4) %}
+                <tr>
+                  <th class="table-light text-start" style="font-size: 0.72rem;">
+                    {{ ['Normal Traffic', 'Suspicious Outbound', 'Abnormal Conn', 'Potential Exfil'][i] }}
+                  </th>
+                  {% for j in range(4) %}
+                    <td class="{% if i == j %}bg-primary-subtle fw-bold text-primary{% else %}text-muted{% endif %}">
+                      {{ matrix[i][j] | default(0) }}
+                    </td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="text-muted small mt-2">
+          <i class="bi bi-info-circle me-1"></i> Evaluated on stratified 20% test partition ({{ metrics.sample_count }} total benchmark flow samples).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Feature Importance Bar Chart -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-bar-chart-line-fill text-primary"></i> AI Feature Importances (Random Forest)</h3>
+      </div>
+      <div class="card-body">
+        <div style="height: 200px; position: relative;">
+          <canvas id="featureImportanceChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DEEP DIVE: EXPLAINABLE AI FLOW INSPECTOR -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h3 class="card-title">
+      <i class="bi bi-search text-primary"></i> Explainable AI (XAI) Flow Inspector
+    </h3>
+    <span class="text-muted small">Select any recent flow below to inspect feature contributions & reasoning</span>
+  </div>
+  <div class="card-body">
+    <!-- Flow Selector Dropdown -->
+    <div class="mb-4">
+      <label class="form-label small fw-semibold text-secondary">Choose Flow / Incident to Inspect:</label>
+      <select id="flowSelect" class="form-select font-monospace" onchange="loadFlowExplanation(this.value)">
+        {% for a in alert_flows %}
+          <option value="{{ a.flow_id }}">
+            Flow #{{ a.flow_id }} | {{ a.src_ip }} &rarr; {{ a.dst_ip }} | {{ a.alert_type }} | Risk: {{ "%.0f"|format(a.risk_score) }}/100 ({{ a.severity }})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Dynamic Explanation Container -->
+    <div id="explanationContainer">
+      <div class="row g-4">
+        <!-- Left: Summary & Classification Breakdown -->
+        <div class="col-lg-6">
+          <div class="p-3 border rounded bg-light-subtle h-100">
+            <h5 class="fw-bold mb-2" id="xaiTitle">Detection Rationale</h5>
+            <div class="alert alert-light border mb-3 small" id="xaiPrimaryReason">
+              Loading feature attribution...
+            </div>
+
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <div class="p-2 border rounded bg-white">
+                  <div class="text-muted small">Isolation Forest Score</div>
+                  <div class="h5 fw-bold text-danger mb-0" id="xaiIsoScore">0.78</div>
+                  <span class="text-muted" style="font-size: 0.7rem;">Anomaly: Multidimensional outlier</span>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="p-2 border rounded bg-white">
+                  <div class="text-muted small">Random Forest Class</div>
+                  <div class="h5 fw-bold text-primary mb-0" id="xaiRfClass">Potential Exfiltration</div>
+                  <span class="text-muted" style="font-size: 0.7rem;" id="xaiRfConf">Confidence: 94.2%</span>
+                </div>
+              </div>
+            </div>
+
+            <h6 class="fw-semibold small text-secondary mb-2">SOC Recommended Investigation Steps:</h6>
+            <div id="xaiRecommendations" class="small text-dark"></div>
+          </div>
+        </div>
+
+        <!-- Right: Feature Contribution Bar Chart -->
+        <div class="col-lg-6">
+          <div class="p-3 border rounded bg-white h-100">
+            <h6 class="fw-bold mb-2"><i class="bi bi-bar-chart-fill text-primary me-1"></i> Feature Attribution & Baseline Divergence</h6>
+            <p class="text-muted small">Relative weight of each network parameter in triggering the anomaly:</p>
+            <div style="height: 220px; position: relative;">
+              <canvas id="xaiContributionChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let xaiChart = null;
+
+  // Global Feature Importance Chart
+  document.addEventListener('DOMContentLoaded', function() {
+    const featNames = {{ feat_names | safe }};
+    const featVals = {{ feat_values | safe }};
+
+    const ctx = document.getElementById('featureImportanceChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: featNames.slice(0, 8),
+        datasets: [{
+          label: 'Gini Importance',
+          data: featVals.slice(0, 8),
+          backgroundColor: '#3b82f6',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: '#f1f5f9' }, beginAtZero: true },
+          y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+        }
+      }
+    });
+
+    // Load initial selected flow
+    const flowSelect = document.getElementById('flowSelect');
+    if (flowSelect && flowSelect.value) {
+      loadFlowExplanation(flowSelect.value);
+    }
+  });
+
+  // Dynamic Flow Explanation Loader
+  async function loadFlowExplanation(flowId) {
+    if (!flowId) return;
+    try {
+      const resp = await fetch(`{{ url_for('api_flow_explanation') }}?flow_id=${flowId}`);
+      const data = await resp.json();
+      if (!data || data.error) return;
+
+      document.getElementById('xaiPrimaryReason').innerHTML = `<b>Why detected:</b> ${data.primary_reason}`;
+      document.getElementById('xaiIsoScore').innerText = data.isolation_score.toFixed(2);
+      document.getElementById('xaiRfClass').innerText = data.rf_class;
+      document.getElementById('xaiRfConf').innerText = `Confidence: ${(data.rf_confidence * 100).toFixed(1)}%`;
+
+      // Recommendations list
+      const recsDiv = document.getElementById('xaiRecommendations');
+      recsDiv.innerHTML = data.recommended_actions.map(r => `<div class="mb-1"><i class="bi bi-check2-circle text-primary me-1"></i> ${r}</div>`).join('');
+
+      // Feature contribution chart
+      const labels = data.feature_contributions.map(f => f.feature);
+      const vals = data.feature_contributions.map(f => f.importance);
+
+      if (xaiChart) xaiChart.destroy();
+      const ctxXai = document.getElementById('xaiContributionChart').getContext('2d');
+      xaiChart = new Chart(ctxXai, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Attribution Factor',
+            data: vals,
+            backgroundColor: '#ef4444',
+            borderRadius: 4
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+            y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+          }
+        }
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  }
+</script>
+{% endblock %}

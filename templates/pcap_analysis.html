@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}PCAP File Analysis{% endblock %}
+{% block page_title %}PCAP Forensic Analysis{% endblock %}
+{% block page_subtitle %}Deep Packet Flow Feature Extraction & AI Threat Classification{% endblock %}
+
+{% block content %}
+<!-- SAMPLE PCAP DOWNLOAD CARDS -->
+<div class="card mb-4 border-0 shadow-sm" style="background: #ffffff; border: 1px solid var(--ns-border) !important;">
+  <div class="card-header bg-light">
+    <h3 class="card-title text-secondary" style="font-size: 0.88rem;">
+      <i class="bi bi-box-arrow-down text-primary"></i> Pre-Bundled Test PCAP Datasets (Click to Download & Test)
+    </h3>
+  </div>
+  <div class="card-body py-3">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="p-3 border rounded bg-light-subtle d-flex align-items-center justify-content-between">
+          <div>
+            <div class="fw-semibold small text-success"><i class="bi bi-check-circle-fill"></i> Normal Workstation PCAP</div>
+            <div class="text-muted" style="font-size: 0.72rem;">Nominal DNS, TLS 1.3, HTTPS browsing</div>
+          </div>
+          <a href="{{ url_for('download_sample_pcap', filename='normal_workstation_traffic.pcap') }}" class="btn btn-sm btn-outline-success">
+            <i class="bi bi-download"></i> .PCAP
+          </a>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="p-3 border rounded bg-light-subtle d-flex align-items-center justify-content-between">
+          <div>
+            <div class="fw-semibold small text-danger"><i class="bi bi-exclamation-triangle-fill"></i> Data Exfiltration PCAP</div>
+            <div class="text-muted" style="font-size: 0.72rem;">Massive outbound POST payload to unindexed IP</div>
+          </div>
+          <a href="{{ url_for('download_sample_pcap', filename='data_exfiltration_incident.pcap') }}" class="btn btn-sm btn-outline-danger">
+            <i class="bi bi-download"></i> .PCAP
+          </a>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="p-3 border rounded bg-light-subtle d-flex align-items-center justify-content-between">
+          <div>
+            <div class="fw-semibold small text-warning"><i class="bi bi-hdd-network-fill"></i> DNS Tunnel & C2 PCAP</div>
+            <div class="text-muted" style="font-size: 0.72rem;">Encoded TXT subdomains & heartbeat beaconing</div>
+          </div>
+          <a href="{{ url_for('download_sample_pcap', filename='dns_tunneling_and_c2.pcap') }}" class="btn btn-sm btn-outline-warning">
+            <i class="bi bi-download"></i> .PCAP
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- UPLOAD BOX -->
+<div class="card mb-4">
+  <div class="card-header">
+    <h3 class="card-title"><i class="bi bi-cloud-arrow-up text-primary"></i> Upload PCAP File for Analysis</h3>
+    <span class="text-muted small">Supports .pcap, .cap, .pcapng (Max 64MB)</span>
+  </div>
+  <div class="card-body">
+    <form id="pcapUploadForm" enctype="multipart/form-data">
+      <div class="upload-dropzone" id="dropzone" onclick="document.getElementById('pcapFileInput').click()">
+        <i class="bi bi-file-earmark-binary text-primary display-4 d-block mb-3"></i>
+        <h5 class="fw-bold mb-1">Drag and drop network capture file here, or click to browse</h5>
+        <p class="text-muted small mb-3">Compatible with Wireshark, tcpdump, and Zeek packet dumps</p>
+        <span class="btn btn-sm btn-outline-primary px-3">Select PCAP File</span>
+        <input type="file" name="pcap_file" id="pcapFileInput" accept=".pcap,.cap,.pcapng" style="display: none;" onchange="handleFileSelected(this)">
+      </div>
+      <div id="selectedFileInfo" class="mt-2 text-center text-primary fw-semibold small" style="display: none;"></div>
+      
+      <div class="mt-3 text-end" id="uploadActions" style="display: none;">
+        <button type="button" class="btn btn-sm btn-secondary me-2" onclick="cancelUpload()">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-ns-primary px-4" id="submitUploadBtn">
+          <i class="bi bi-cpu me-1"></i> Start AI Flow Analysis
+        </button>
+      </div>
+    </form>
+
+    <!-- Upload Progress -->
+    <div id="uploadProgressContainer" class="mt-3" style="display: none;">
+      <div class="d-flex justify-content-between small text-muted mb-1">
+        <span id="progressStatusText">Parsing raw packets with Scapy & feeding AI models...</span>
+        <span id="progressPercentage">0%</span>
+      </div>
+      <div class="progress" style="height: 8px;">
+        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ANALYSIS RESULTS AREA (DYNAMIC) -->
+<div id="analysisResultsContainer" style="display: none;">
+  <!-- RESULTS SUMMARY CARDS -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-icon primary"><i class="bi bi-box-seam"></i></div>
+        <div>
+          <div class="stat-label">Packets Processed</div>
+          <div class="stat-value" id="resPackets">0</div>
+          <div class="stat-meta text-muted">Raw IP Frames</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-icon info"><i class="bi bi-shuffle"></i></div>
+        <div>
+          <div class="stat-label">Reconstructed Flows</div>
+          <div class="stat-value" id="resFlows">0</div>
+          <div class="stat-meta text-muted">5-Tuple Conversations</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-icon danger"><i class="bi bi-shield-slash"></i></div>
+        <div>
+          <div class="stat-label">Exfiltration Flagged</div>
+          <div class="stat-value text-danger" id="resExfil">0</div>
+          <div class="stat-meta text-danger fw-semibold">High Priority</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-icon warning"><i class="bi bi-bell-fill"></i></div>
+        <div>
+          <div class="stat-label">Total Alerts Created</div>
+          <div class="stat-value text-warning" id="resAlerts">0</div>
+          <div class="stat-meta text-muted">Added to SOC triage</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOWS TABLE -->
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h3 class="card-title">
+        <i class="bi bi-list-check text-primary"></i> Reconstructed Network Flows & AI Classification
+      </h3>
+      <span class="badge bg-primary-subtle text-primary border" id="resFilenameBadge">File: sample.pcap</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Flow ID</th>
+            <th>Source Host</th>
+            <th>Destination</th>
+            <th>Protocol</th>
+            <th>Bytes Sent</th>
+            <th>Bytes Recv</th>
+            <th>Anomaly Score</th>
+            <th>AI Classification</th>
+            <th>Risk Score</th>
+            <th>Severity</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="pcapFlowsTableBody">
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('pcapFileInput');
+  const fileInfo = document.getElementById('selectedFileInfo');
+  const uploadActions = document.getElementById('uploadActions');
+
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropzone.addEventListener(eventName, e => { e.preventDefault(); dropzone.classList.add('dragover'); }, false);
+  });
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, e => { e.preventDefault(); dropzone.classList.remove('dragover'); }, false);
+  });
+
+  dropzone.addEventListener('drop', e => {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if (files.length > 0) {
+      fileInput.files = files;
+      handleFileSelected(fileInput);
+    }
+  });
+
+  function handleFileSelected(input) {
+    if (input.files.length > 0) {
+      const file = input.files[0];
+      fileInfo.style.display = 'block';
+      fileInfo.innerText = `Selected File: ${file.name} (${(file.size / (1024*1024)).toFixed(2)} MB)`;
+      uploadActions.style.display = 'block';
+    }
+  }
+
+  function cancelUpload() {
+    fileInput.value = '';
+    fileInfo.style.display = 'none';
+    uploadActions.style.display = 'none';
+  }
+
+  // Handle Upload Form Submit
+  document.getElementById('pcapUploadForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    if (!fileInput.files.length) {
+      showToast('Please select a PCAP file first.', 'text-bg-warning');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('pcap_file', fileInput.files[0]);
+
+    const progressContainer = document.getElementById('uploadProgressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressStatusText');
+    const submitBtn = document.getElementById('submitUploadBtn');
+
+    progressContainer.style.display = 'block';
+    submitBtn.disabled = true;
+    progressBar.style.width = '30%';
+
+    try {
+      progressText.innerText = 'Uploading and extracting 5-tuple flow vectors with Scapy...';
+      progressBar.style.width = '60%';
+
+      const resp = await fetch('{{ url_for("api_upload_pcap") }}', {
+        method: 'POST',
+        body: formData
+      });
+
+      const res = await resp.json();
+      progressBar.style.width = '100%';
+
+      if (resp.status !== 200) {
+        showToast(`Analysis failed: ${res.error || 'Server error'}`, 'text-bg-danger');
+        progressContainer.style.display = 'none';
+        submitBtn.disabled = false;
+        return;
+      }
+
+      showToast(`PCAP analyzed! ${res.flows_analyzed} flows reconstructed, ${res.total_alerts_generated} alerts flagged.`, 'text-bg-success');
+      
+      // Render Results
+      document.getElementById('resPackets').innerText = res.packets_parsed;
+      document.getElementById('resFlows').innerText = res.flows_analyzed;
+      document.getElementById('resExfil').innerText = res.exfiltration_alerts;
+      document.getElementById('resAlerts').innerText = res.total_alerts_generated;
+      document.getElementById('resFilenameBadge').innerText = `File: ${res.filename}`;
+
+      const tbody = document.getElementById('pcapFlowsTableBody');
+      let html = '';
+      res.flows.forEach(f => {
+        const sevClass = f.severity ? f.severity.toLowerCase() : 'low';
+        html += `
+          <tr>
+            <td class="font-monospace small">#${f.flow_id}</td>
+            <td><span class="ip-badge">${f.src_ip}</span></td>
+            <td><span class="ip-badge">${f.dst_ip}</span></td>
+            <td><span class="badge bg-light text-dark border">${f.protocol}</span></td>
+            <td class="font-monospace ${f.bytes_sent > 1000000 ? 'text-danger fw-bold' : ''}">${f.bytes_sent.toLocaleString()} B</td>
+            <td class="font-monospace text-muted">${f.bytes_recv.toLocaleString()} B</td>
+            <td class="font-monospace small">${f.isolation_score.toFixed(2)}</td>
+            <td><span class="fw-semibold ${f.rf_class.includes('Exfiltration') ? 'text-danger' : (f.rf_class.includes('Suspicious') ? 'text-warning' : 'text-dark')}">${f.rf_class}</span></td>
+            <td><span class="risk-pill ${sevClass}">${f.risk_score.toFixed(0)}/100</span></td>
+            <td><span class="badge-severity ${sevClass}">${f.severity}</span></td>
+            <td>
+              ${f.alert_id ? `<a href="{{ url_for('incidents') }}?id=${f.alert_id}" class="btn btn-sm btn-outline-danger py-0 px-2" style="font-size: 0.72rem;">Investigate</a>` : `<span class="text-muted small">Nominal</span>`}
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+      document.getElementById('analysisResultsContainer').style.display = 'block';
+
+      // Scroll smoothly to results
+      document.getElementById('analysisResultsContainer').scrollIntoView({ behavior: 'smooth' });
+
+    } catch (err) {
+      console.error(err);
+      showToast('Error communicating with server during PCAP upload.', 'text-bg-danger');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+{% endblock %}

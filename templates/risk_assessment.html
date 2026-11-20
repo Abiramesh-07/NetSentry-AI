@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Risk Assessment{% endblock %}
+{% block page_title %}Dynamic Risk Assessment Engine{% endblock %}
+{% block page_subtitle %}Multi-Factor Weighted Risk Scoring & Severity Matrix{% endblock %}
+
+{% block content %}
+<!-- FORMULA EXPLAINER ROW -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title text-primary"><i class="bi bi-calculator-fill text-primary"></i> Dynamic Risk Scoring Equation</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          NetSentry AI synthesizes multiple telemetry indicators into a normalized <b>0 to 100 Risk Score</b>. Each factor is dynamically weighted based on SOC policy configurations:
+        </p>
+
+        <div class="p-3 bg-light rounded border font-monospace small mb-3 text-center">
+          Risk = (w<sub>iso</sub> &times; IsoScore) + (w<sub>rf</sub> &times; RFClass) + (w<sub>beh</sub> &times; BaselineDev) + (w<sub>vol</sub> &times; VolumeAnom) + (w<sub>rep</sub> &times; ThreatRep)
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle small">
+            <thead>
+              <tr class="table-light">
+                <th>Component Indicator</th>
+                <th>Active Weight</th>
+                <th>Evaluation Logic</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Isolation Forest (IsoScore)</strong></td>
+                <td><span class="badge bg-primary">30%</span></td>
+                <td>Unsupervised high-dimensional statistical anomaly distance</td>
+              </tr>
+              <tr>
+                <td><strong>Random Forest (RFClass)</strong></td>
+                <td><span class="badge bg-primary">30%</span></td>
+                <td>Predicted tactical class confidence (Exfil: 92, Suspicious: 65)</td>
+              </tr>
+              <tr>
+                <td><strong>Behavioral Baseline Deviation</strong></td>
+                <td><span class="badge bg-primary">20%</span></td>
+                <td>Z-score divergence from device historical outbound baseline</td>
+              </tr>
+              <tr>
+                <td><strong>Outbound Volume Anomaly</strong></td>
+                <td><span class="badge bg-primary">10%</span></td>
+                <td>Absolute payload volume & velocity (burst &gt; 2MB to 24MB)</td>
+              </tr>
+              <tr>
+                <td><strong>Destination Threat Intel</strong></td>
+                <td><span class="badge bg-primary">10%</span></td>
+                <td>Known C2, Tor exit, or bulletproof host reputation score</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Risk Severity Bands Card -->
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-shield-shaded text-primary"></i> Risk Severity Bands</h3>
+      </div>
+      <div class="card-body d-flex flex-column justify-content-between">
+        <div class="p-2 mb-2 rounded border border-danger-subtle bg-danger-subtle d-flex align-items-center justify-content-between">
+          <div>
+            <div class="fw-bold text-danger">CRITICAL (85 – 100)</div>
+            <div class="small text-danger-emphasis">Confirmed exfiltration signatures, active C2 drop</div>
+          </div>
+          <span class="badge bg-danger">Containment</span>
+        </div>
+
+        <div class="p-2 mb-2 rounded border border-warning-subtle bg-warning-subtle d-flex align-items-center justify-content-between">
+          <div>
+            <div class="fw-bold text-warning-emphasis">HIGH (70 – 84)</div>
+            <div class="small text-muted">Severe baseline deviation & high outbound ratio</div>
+          </div>
+          <span class="badge bg-warning text-dark">Investigate</span>
+        </div>
+
+        <div class="p-2 mb-2 rounded border border-warning-subtle bg-light d-flex align-items-center justify-content-between">
+          <div>
+            <div class="fw-bold text-dark">MEDIUM (40 – 69)</div>
+            <div class="small text-muted">Unusual outbound volume or off-hours connection</div>
+          </div>
+          <span class="badge bg-secondary">Triage</span>
+        </div>
+
+        <div class="p-2 rounded border border-success-subtle bg-success-subtle d-flex align-items-center justify-content-between">
+          <div>
+            <div class="fw-bold text-success">LOW (0 – 39)</div>
+            <div class="small text-success-emphasis">Standard traffic within expected baseline limits</div>
+          </div>
+          <span class="badge bg-success">Nominal</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- INTERACTIVE RISK SIMULATOR & RISK MATRIX -->
+<div class="row g-3 mb-4">
+  <!-- Interactive Risk Simulator -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-sliders2 text-primary"></i> Interactive Risk Calculator</h3>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small fw-semibold">
+            <span>Isolation Forest Anomaly Score:</span>
+            <span id="valIso" class="font-monospace text-primary">0.75</span>
+          </div>
+          <input type="range" class="form-range" id="sliderIso" min="0" max="1" step="0.05" value="0.75" oninput="recalcSimRisk()">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Random Forest Classification:</label>
+          <select id="simRfClass" class="form-select form-select-sm" onchange="recalcSimRisk()">
+            <option value="Potential Data Exfiltration">Potential Data Exfiltration (Base: 92)</option>
+            <option value="Suspicious Outbound Transfer">Suspicious Outbound Transfer (Base: 65)</option>
+            <option value="Abnormal Connection Behavior">Abnormal Connection Behavior (Base: 55)</option>
+            <option value="Normal Traffic">Normal Traffic (Base: 5)</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small fw-semibold">
+            <span>Behavioral Volume Multiplier:</span>
+            <span id="valVol" class="font-monospace text-primary">4.5x baseline</span>
+          </div>
+          <input type="range" class="form-range" id="sliderVol" min="0.5" max="15" step="0.5" value="4.5" oninput="recalcSimRisk()">
+        </div>
+
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small fw-semibold">
+            <span>Destination Threat Reputation:</span>
+            <span id="valRep" class="font-monospace text-primary">85 / 100</span>
+          </div>
+          <input type="range" class="form-range" id="sliderRep" min="0" max="100" step="5" value="85" oninput="recalcSimRisk()">
+        </div>
+
+        <div class="p-3 rounded border text-center" id="simResultBox" style="background-color: #fee2e2;">
+          <div class="text-muted small">Calculated Dynamic Risk:</div>
+          <div class="display-5 fw-bold text-danger mb-0" id="simScoreDisplay">88.5</div>
+          <span class="badge bg-danger" id="simSeverityDisplay">CRITICAL SEVERITY</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dynamic Risk Heatmap Matrix -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <h3 class="card-title"><i class="bi bi-grid-3x2-gap-fill text-primary"></i> 5x5 Enterprise Risk Matrix (Likelihood vs Impact)</h3>
+      </div>
+      <div class="card-body d-flex flex-column justify-content-center">
+        <div class="table-responsive">
+          <table class="table table-bordered text-center align-middle small" style="table-layout: fixed;">
+            <thead>
+              <tr class="table-light">
+                <th style="width: 25%;">Impact &darr; \ Likelihood &rarr;</th>
+                <th>Rare</th>
+                <th>Unlikely</th>
+                <th>Moderate</th>
+                <th>Likely</th>
+                <th>Frequent</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th class="table-light">Severe Exfil</th>
+                <td style="background: #fef3c7;">Medium</td>
+                <td style="background: #ffedd5;">High</td>
+                <td style="background: #ffedd5;">High</td>
+                <td style="background: #fee2e2; font-weight: bold; color: #991b1b;">CRITICAL</td>
+                <td style="background: #fee2e2; font-weight: bold; color: #991b1b;">CRITICAL</td>
+              </tr>
+              <tr>
+                <th class="table-light">High Egress</th>
+                <td style="background: #dcfce7;">Low</td>
+                <td style="background: #fef3c7;">Medium</td>
+                <td style="background: #ffedd5;">High</td>
+                <td style="background: #ffedd5;">High</td>
+                <td style="background: #fee2e2; font-weight: bold; color: #991b1b;">CRITICAL</td>
+              </tr>
+              <tr>
+                <th class="table-light">Moderate Outbound</th>
+                <td style="background: #dcfce7;">Low</td>
+                <td style="background: #dcfce7;">Low</td>
+                <td style="background: #fef3c7;">Medium</td>
+                <td style="background: #fef3c7;">Medium</td>
+                <td style="background: #ffedd5;">High</td>
+              </tr>
+              <tr>
+                <th class="table-light">Nominal Flow</th>
+                <td style="background: #dcfce7;">Low</td>
+                <td style="background: #dcfce7;">Low</td>
+                <td style="background: #dcfce7;">Low</td>
+                <td style="background: #dcfce7;">Low</td>
+                <td style="background: #fef3c7;">Medium</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function recalcSimRisk() {
+    const iso = parseFloat(document.getElementById('sliderIso').value);
+    const rfClass = document.getElementById('simRfClass').value;
+    const volMult = parseFloat(document.getElementById('sliderVol').value);
+    const rep = parseFloat(document.getElementById('sliderRep').value);
+
+    document.getElementById('valIso').innerText = iso.toFixed(2);
+    document.getElementById('valVol').innerText = `${volMult.toFixed(1)}x baseline`;
+    document.getElementById('valRep').innerText = `${rep.toFixed(0)} / 100`;
+
+    const rfBase = {
+      'Potential Data Exfiltration': 92,
+      'Suspicious Outbound Transfer': 65,
+      'Abnormal Connection Behavior': 55,
+      'Normal Traffic': 5
+    }[rfClass];
+
+    const c_iso = iso * 100;
+    const c_rf = rfBase * 0.9;
+    const c_beh = Math.min(100, volMult * 12);
+    const c_vol = volMult > 4 ? 85 : (volMult > 2 ? 50 : 15);
+    const c_rep = rep;
+
+    let score = (c_iso * 0.3) + (c_rf * 0.3) + (c_beh * 0.2) + (c_vol * 0.1) + (c_rep * 0.1);
+    if (rfClass === 'Potential Data Exfiltration') score = Math.max(score, 78);
+    score = Math.min(100, Math.max(0, score));
+
+    const box = document.getElementById('simResultBox');
+    const scoreDisp = document.getElementById('simScoreDisplay');
+    const sevDisp = document.getElementById('simSeverityDisplay');
+
+    scoreDisp.innerText = score.toFixed(1);
+
+    if (score >= 85) {
+      box.style.backgroundColor = '#fee2e2';
+      scoreDisp.className = 'display-5 fw-bold text-danger mb-0';
+      sevDisp.className = 'badge bg-danger';
+      sevDisp.innerText = 'CRITICAL SEVERITY';
+    } else if (score >= 70) {
+      box.style.backgroundColor = '#ffedd5';
+      scoreDisp.className = 'display-5 fw-bold text-warning mb-0';
+      sevDisp.className = 'badge bg-warning text-dark';
+      sevDisp.innerText = 'HIGH SEVERITY';
+    } else if (score >= 40) {
+      box.style.backgroundColor = '#fef3c7';
+      scoreDisp.className = 'display-5 fw-bold text-secondary mb-0';
+      sevDisp.className = 'badge bg-secondary';
+      sevDisp.innerText = 'MEDIUM SEVERITY';
+    } else {
+      box.style.backgroundColor = '#dcfce7';
+      scoreDisp.className = 'display-5 fw-bold text-success mb-0';
+      sevDisp.className = 'badge bg-success';
+      sevDisp.innerText = 'LOW / NOMINAL';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', recalcSimRisk);
+</script>
+{% endblock %}
